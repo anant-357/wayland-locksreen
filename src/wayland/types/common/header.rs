@@ -16,10 +16,10 @@ impl Header {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-       let object_id_bytes = self.object_id.to_le_bytes(); // [0x01, 0x00, 0x00, 0x00]
-        let opcode_bytes = self.opcode.to_le_bytes(); // [0x00, 0x00]
-        let size_bytes = self.size.to_le_bytes(); // [0x0c, 0x00]
-        let mut request = Vec::new();
+       let object_id_bytes = self.object_id.to_le_bytes();
+        let opcode_bytes = self.opcode.to_le_bytes();
+        let size_bytes = self.size.to_le_bytes();
+        let mut request = Vec::new(); 
         request.extend_from_slice(&object_id_bytes);
         request.extend_from_slice(&opcode_bytes);
         request.extend_from_slice(&size_bytes);

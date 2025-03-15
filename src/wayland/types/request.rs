@@ -1,4 +1,4 @@
-use crate::wayland::types::header::Header;
+use crate::wayland::types::common::header::Header;
 
 enum Message {
     Callback { callback_id: u32 },

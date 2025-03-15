@@ -70,6 +70,10 @@ impl Wayland {
                             .expect("Global event should have interface");
                         self.interface_map
                             .insert(interface.0, (interface.1, interface.2));
+                    } else {
+                        if message.is_callback_done() {
+                            tracing::info!("{:#?}", self.interface_map);
+                        }
                     }
                 }
                 Ok(true)
