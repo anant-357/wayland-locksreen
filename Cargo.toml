@@ -1,0 +1,9 @@
+[package]
+name = "lock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mio = { version = "*", default-features = false, features = ["os-poll", "net"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", default-features = false, features = ["ansi", "fmt", "std"] }
