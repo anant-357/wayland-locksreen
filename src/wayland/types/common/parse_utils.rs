@@ -6,6 +6,7 @@ pub enum ParseError {
     Io(io::Error),
     Utf8(std::string::FromUtf8Error),
     UnexpectedEndOfBuffer,
+    InvalidArgument
 }
 
 impl fmt::Display for ParseError {
@@ -14,6 +15,7 @@ impl fmt::Display for ParseError {
             ParseError::Io(err) => write!(f, "IO error: {}", err),
             ParseError::Utf8(err) => write!(f, "UTF-8 conversion error: {}", err),
             ParseError::UnexpectedEndOfBuffer => write!(f, "Unexpected end of buffer"),
+            ParseError::InvalidArgument => write!(f, "Argument invalid")
         }
     }
 }

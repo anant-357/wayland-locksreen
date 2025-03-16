@@ -1,5 +1,5 @@
 use crate::wayland::types::common::{
-    argument::Argument,
+    argument::{Argument, Object},
     header::Header,
     parse_utils::{ParseError, ParseResult},
 };
@@ -8,25 +8,47 @@ use std::io::Cursor;
 
 #[derive(Debug)]
 pub enum Event {
-    DeleteId { id: u32 },
-    Interface { id: u32, name: String, version: u32 },
-    Callback { callback_data: u32 },
+    Error {
+        object_id: u32,
+        code: u32,
+        message: String,
+    },
+    DeleteId {
+        id: u32,
+    },
+    Interface {
+        id: u32,
+        name: String,
+        version: u32,
+    },
+    Callback {
+        callback_data: u32,
+    },
     Other,
 }
 
 impl Event {
     fn parse(header: Header, payload: &mut Cursor<&[u8]>) -> ParseResult<Self> {
-        match header.object_id {
+        match header.object_id.inner() {
             1 => match header.opcode {
+                0 => {
+                    let object_id = u32::decode(payload)?;
+                    let code = u32::decode(payload)?;
+                    let message = String::decode(payload)?;
+                    Ok(Self::Error {
+                        object_id,
+                        code,
+                        message,
+                    })
+                }
                 1 => {
-                    let id = Argument::parse_wayland_u32(payload)?;
-                    let event = Self::DeleteId { id };
-                    Ok(event)
+                    let id = u32::decode(payload)?;
+                    Ok(Self::DeleteId { id })
                 }
                 _ => {
                     tracing::warn!(
                         "Unhandleable event!: id {}, opcode {}",
-                        header.object_id,
+                        header.object_id.inner(),
                         header.opcode
                     );
                     Ok(Self::Other)
@@ -37,17 +59,16 @@ impl Event {
                     if payload.get_ref().len() < 8 {
                         Err(ParseError::UnexpectedEndOfBuffer)
                     } else {
-                        let id = Argument::parse_wayland_u32(payload)?;
-                        let name = Argument::parse_wayland_string(payload)?
-                            .expect("Failed to parse wayland string");
-                        let version = Argument::parse_wayland_u32(payload)?;
+                        let id = u32::decode(payload)?;
+                        let name = String::decode(payload)?;
+                        let version = u32::decode(payload)?;
                         Ok(Event::Interface { id, name, version })
                     }
                 }
                 _ => {
                     tracing::warn!(
                         "Unhandleable event!: id {}, opcode {}",
-                        header.object_id,
+                        header.object_id.inner(),
                         header.opcode
                     );
                     Ok(Self::Other)
@@ -55,14 +76,14 @@ impl Event {
             },
             3 => match header.opcode {
                 0 => {
-                    let callback_data = Argument::parse_wayland_u32(payload)?;
+                    let callback_data = u32::decode(payload)?;
                     let event = Self::Callback { callback_data };
                     Ok(event)
                 }
                 _ => {
                     tracing::warn!(
                         "Unhandleable event!: id {}, opcode {}",
-                        header.object_id,
+                        header.object_id.inner(),
                         header.opcode
                     );
                     Ok(Self::Other)
@@ -71,7 +92,7 @@ impl Event {
             _ => {
                 tracing::warn!(
                     "Unhandleable event!: id {}, opcode {}",
-                    header.object_id,
+                    header.object_id.inner(),
                     header.opcode
                 );
                 Ok(Self::Other)
@@ -108,9 +129,9 @@ impl EventMessage {
     }
 
     fn parse(buffer: &mut Cursor<&[u8]>) -> ParseResult<Self> {
-        let object_id = Argument::parse_wayland_u32(buffer)?;
-        let opcode = Argument::parse_wayland_u16(buffer)?;
-        let message_size = Argument::parse_wayland_u16(buffer)?;
+        let object_id = Object::decode(buffer)?;
+        let opcode = u16::decode(buffer)?;
+        let message_size = u16::decode(buffer)?;
         let header = Header::new(object_id, opcode, message_size);
         if message_size > buffer.get_ref().len() as u16 {
             Err(ParseError::UnexpectedEndOfBuffer)

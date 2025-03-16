@@ -1,55 +1,48 @@
-use crate::wayland::types::common::header::Header;
+use crate::wayland::types::common::{
+    argument::{Argument, NewId, Object},
+    header::Header,
+    parse_utils::ParseResult,
+};
 
-enum Message {
-    Callback { callback_id: u32 },
+#[derive(Debug)]
+pub enum Message {
+    GetRegistry { registry: Object },
+    Sync { callback: u32 },
+    Bind { name: Object, id: NewId },
 }
 
 impl Message {
-    fn to_vec(&self) -> Vec<u8> {
+    fn to_vec(&self) -> ParseResult<Vec<u8>> {
         match self {
-            Self::Callback { callback_id } => {
-                let mut v = Vec::new();
-                v.extend_from_slice(&callback_id.to_le_bytes());
-                v
+            Self::Sync { callback } => callback.encode(),
+            Self::Bind { name, id } => {
+                let buffer = name.encode_extend(Vec::new())?;
+                id.encode_extend(buffer)
             }
+            Self::GetRegistry { registry } => registry.encode(),
         }
     }
 }
 
+#[derive(Debug)]
 pub struct RequestMessage {
     header: Header,
     payload: Message,
 }
 
 impl RequestMessage {
-    fn build(object_id: u32, opcode: u16, size: u16, message: Message) -> Self {
-        let header = Header {
-            object_id,
-            opcode,
-            size,
-        };
-
+    pub fn build(object_id: Object, opcode: u16, size: u16, message: Message) -> Self {
+        let header = Header::new(object_id, opcode, size);
         Self {
             header,
             payload: message,
         }
     }
 
-    pub fn to_vec(&self) -> Vec<u8> {
-        let header = self.header.to_vec();
-        let payload = self.payload.to_vec();
-
-        let mut request = Vec::new();
-        request.extend_from_slice(&header);
-        request.extend_from_slice(&payload);
-        request
+    pub fn to_vec(&self) -> ParseResult<Vec<u8>> {
+        let mut request = self.header.to_vec()?;
+        request.extend(self.payload.to_vec()?);
+        Ok(request)
     }
 
-    pub fn sync(callback_id: u32) -> Self {
-        RequestMessage::build(1, 0, 12, Message::Callback { callback_id })
-    }
-
-    pub fn get_registry(callback_id: u32) -> Self {
-        RequestMessage::build(1, 1, 12, Message::Callback { callback_id })
-    }
-}
+   }

@@ -1,5 +1,8 @@
-use crate::wayland::types::event::EventMessage;
-use crate::wayland::types::request::RequestMessage;
+use crate::wayland::types::{
+    common::argument::{NewId, Object},
+    core::{display::WlDisplay, registry::WlRegistry},
+    event::EventMessage,
+};
 use mio::{Events, Interest, Poll, Token, net::UnixStream};
 use std::{
     collections::HashMap,
@@ -12,8 +15,10 @@ const WAYLAND_SOCKET: Token = Token(0);
 
 pub struct Wayland {
     stream: UnixStream,
+    display: WlDisplay,
+    registry: Option<WlRegistry>,
     poll: Poll,
-    next_callback_id: u32,
+    next_id: u32,
     interface_map: HashMap<u32, (String, u32)>,
 }
 
@@ -35,8 +40,10 @@ impl Wayland {
 
         Ok(Self {
             stream,
+            display: WlDisplay::new(Object::new(1)),
+            registry: None,
             poll,
-            next_callback_id: 2,
+            next_id: 2,
             interface_map: HashMap::new(),
         })
     }
@@ -72,7 +79,7 @@ impl Wayland {
                             .insert(interface.0, (interface.1, interface.2));
                     } else {
                         if message.is_callback_done() {
-                            tracing::info!("{:#?}", self.interface_map);
+                            self.bind(7);
                         }
                     }
                 }
@@ -83,7 +90,7 @@ impl Wayland {
     }
 
     pub fn read_messages(&mut self) -> Result<Option<Vec<EventMessage>>> {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 8192];
         match self.stream.read(&mut buf) {
             Ok(0) => Ok(None),
             Ok(n) => {
@@ -100,25 +107,52 @@ impl Wayland {
         }
     }
 
+    pub fn bind(&mut self, name: u32) -> Result<()> {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        if let Some((interface, version)) = self.interface_map.get(&name) {
+            tracing::info!("Binding interface {} version {}", interface, version);
+            let request = self
+                .registry
+                .expect("WlRegistry not setup yet, called get_registry first?")
+                .bind(
+                    name,
+                    NewId::new((interface.to_string(), *version), Object::new(id)),
+                );
+            let request_bytes = request.to_vec().unwrap();
+            tracing::info!("Sending: {:?}", request);
+            tracing::info!("Sending: {:?}, len: {}", request_bytes, request_bytes.len());
+            self.stream.write_all(&request_bytes)?;
+            self.stream.flush()?;
+            tracing::trace!("Sent bind request");
+            Ok(())
+        } else {
+            tracing::error!("Interface with name {} not supported by compositor", name);
+            Ok(())
+        }
+    }
+
     pub fn sync(&mut self) -> Result<()> {
-        let callback_id = self.next_callback_id;
-        self.next_callback_id += 1;
+        let id = self.next_id;
+        self.next_id += 1;
 
         self.stream
-            .write_all(&RequestMessage::sync(callback_id).to_vec())?;
+            .write_all(&self.display.sync(id).to_vec().unwrap())?;
         self.stream.flush()?;
         tracing::trace!("Sent sync request");
         Ok(())
     }
 
     pub fn get_registry(&mut self) -> Result<()> {
-        let callback_id = self.next_callback_id;
-        self.next_callback_id += 1;
+        let id = self.next_id;
+        self.next_id += 1;
 
         self.stream
-            .write_all(&RequestMessage::get_registry(callback_id).to_vec())?;
+            .write_all(&self.display.get_registry(id).to_vec().unwrap())?;
         self.stream.flush()?;
-        tracing::trace!("Sent get_registry request");
+        self.registry = Some(WlRegistry::new(Object::new(id)));
+        tracing::trace!("Created: {:?}", self.registry);
         Ok(())
     }
 }
