@@ -30,6 +30,6 @@ struct Keymap {
 pub struct WlKeyboard{
     id: Object,
     keymap: Option<Keymap>
-};
+}
 
 

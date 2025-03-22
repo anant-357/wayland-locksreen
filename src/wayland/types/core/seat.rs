@@ -12,6 +12,6 @@ enum Capability {
 #[derive(Debug, Clone, Copy)]
 pub struct WlSeat{
     id: Object,
-};
+}
 
 
