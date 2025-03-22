@@ -1,7 +1,7 @@
 use crate::wayland::types::common::{
     argument::{Argument, Object},
     header::Header,
-    parse_utils::{ParseError, ParseResult},
+    parse_utils::{Error, WaylandResult},
 };
 
 use std::io::Cursor;
@@ -28,7 +28,7 @@ pub enum Event {
 }
 
 impl Event {
-    fn parse(header: Header, payload: &mut Cursor<&[u8]>) -> ParseResult<Self> {
+    fn parse(header: Header, payload: &mut Cursor<&[u8]>) -> WaylandResult<Self> {
         match header.object_id.inner() {
             1 => match header.opcode {
                 0 => {
@@ -57,7 +57,7 @@ impl Event {
             2 => match header.opcode {
                 0 => {
                     if payload.get_ref().len() < 8 {
-                        Err(ParseError::UnexpectedEndOfBuffer)
+                        Err(Error::UnexpectedEndOfBuffer)
                     } else {
                         let id = u32::decode(payload)?;
                         let name = String::decode(payload)?;
@@ -128,13 +128,13 @@ impl EventMessage {
         messages
     }
 
-    fn parse(buffer: &mut Cursor<&[u8]>) -> ParseResult<Self> {
+    fn parse(buffer: &mut Cursor<&[u8]>) -> WaylandResult<Self> {
         let object_id = Object::decode(buffer)?;
         let opcode = u16::decode(buffer)?;
         let message_size = u16::decode(buffer)?;
         let header = Header::new(object_id, opcode, message_size);
         if message_size > buffer.get_ref().len() as u16 {
-            Err(ParseError::UnexpectedEndOfBuffer)
+            Err(Error::UnexpectedEndOfBuffer)
         } else {
             let payload = Event::parse(header.clone(), buffer)?;
             tracing::info!("{:?}", payload);

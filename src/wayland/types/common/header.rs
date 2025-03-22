@@ -1,6 +1,6 @@
 use crate::wayland::types::common::{
     argument::{Argument, Object},
-    parse_utils::ParseResult,
+    parse_utils::WaylandResult,
 };
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ impl Header {
         }
     }
 
-    pub fn to_vec(&self) -> ParseResult<Vec<u8>> {
+    pub fn to_vec(&self) -> WaylandResult<Vec<u8>> {
         self.size.encode_extend(
             self.opcode
                 .encode_extend(self.object_id.encode_extend(Vec::new())?)?,

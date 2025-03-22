@@ -1,7 +1,7 @@
 use crate::wayland::types::common::{
     argument::{Argument, NewId, Object},
     header::Header,
-    parse_utils::ParseResult,
+    parse_utils::WaylandResult,
 };
 
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub enum Message {
 }
 
 impl Message {
-    fn to_vec(&self) -> ParseResult<Vec<u8>> {
+    fn to_vec(&self) -> WaylandResult<Vec<u8>> {
         match self {
             Self::Sync { callback } => callback.encode(),
             Self::Bind { name, id } => {
@@ -45,7 +45,7 @@ impl RequestMessage {
         }
     }
 
-    pub fn to_vec(&self) -> ParseResult<Vec<u8>> {
+    pub fn to_vec(&self) -> WaylandResult<Vec<u8>> {
         let mut request = self.header.to_vec()?;
         request.extend(self.payload.to_vec()?);
         Ok(request)
