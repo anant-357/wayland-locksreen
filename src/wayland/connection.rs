@@ -1,7 +1,6 @@
 use crate::wayland::types::{
-    common::argument::{NewId, Object},
-    core::{display::WlDisplay, registry::WlRegistry},
-    event::EventMessage,
+    EventMessage, NewId, Object, RequestMessage, SessionLock, SessionLockManager, WlDisplay,
+    WlRegistry,
 };
 use mio::{Events, Interest, Poll, Token, net::UnixStream};
 use std::{
@@ -17,6 +16,9 @@ pub struct Wayland {
     stream: UnixStream,
     display: WlDisplay,
     registry: Option<WlRegistry>,
+    session_lock_manager: Option<SessionLockManager>,
+    session_lock: Option<SessionLock>,
+    is_setup: bool,
     poll: Poll,
     next_id: u32,
     interface_map: HashMap<u32, (String, u32)>,
@@ -42,6 +44,9 @@ impl Wayland {
             stream,
             display: WlDisplay::new(Object::new(1)),
             registry: None,
+            session_lock_manager: None,
+            session_lock: None,
+            is_setup: false,
             poll,
             next_id: 2,
             interface_map: HashMap::new(),
@@ -79,7 +84,7 @@ impl Wayland {
                             .insert(interface.0, (interface.1, interface.2));
                     } else {
                         if message.is_callback_done() {
-                            self.bind(7);
+                            self.is_setup = true;
                         }
                     }
                 }
@@ -87,6 +92,12 @@ impl Wayland {
             }
             None => Ok(false),
         }
+    }
+
+    fn send_message(&mut self, request: RequestMessage) -> Result<()> {
+        let request_bytes = request.to_vec().unwrap();
+        self.stream.write_all(&request_bytes)?;
+        self.stream.flush()
     }
 
     pub fn read_messages(&mut self) -> Result<Option<Vec<EventMessage>>> {
@@ -107,52 +118,67 @@ impl Wayland {
         }
     }
 
-    pub fn bind(&mut self, name: u32) -> Result<()> {
+    pub fn bind(&mut self, interface: String) -> Result<()> {
+        match self
+            .interface_map
+            .iter()
+            .find(|(_, (iface, _))| *iface == interface)
+        {
+            Some(interface) => {
+                let id = self.next_id;
+                self.next_id += 1;
+                let new_id = Object::new(id);
+                self.send_message(
+                    self.registry
+                        .expect("WlRegistry not setup yet, called get_registry first?")
+                        .bind(
+                            *interface.0,
+                            NewId::new((interface.1.0.clone(), interface.1.1), new_id),
+                        ),
+                )?;
+                self.session_lock_manager = Some(SessionLockManager::new(new_id));
+                tracing::trace!("Sent bind request");
+                Ok(())
+            }
+            None => panic!("Unable to bind to interface: {}", interface),
+        }
+    }
+
+    pub fn lock(&mut self) -> Result<()> {
         let id = self.next_id;
         self.next_id += 1;
 
-        if let Some((interface, version)) = self.interface_map.get(&name) {
-            tracing::info!("Binding interface {} version {}", interface, version);
-            let request = self
-                .registry
-                .expect("WlRegistry not setup yet, called get_registry first?")
-                .bind(
-                    name,
-                    NewId::new((interface.to_string(), *version), Object::new(id)),
-                );
-            let request_bytes = request.to_vec().unwrap();
-            tracing::info!("Sending: {:?}", request);
-            tracing::info!("Sending: {:?}, len: {}", request_bytes, request_bytes.len());
-            self.stream.write_all(&request_bytes)?;
-            self.stream.flush()?;
-            tracing::trace!("Sent bind request");
-            Ok(())
-        } else {
-            tracing::error!("Interface with name {} not supported by compositor", name);
-            Ok(())
+        self.send_message(self.session_lock_manager.unwrap().lock(id))?;
+
+        self.session_lock = Some(SessionLock::new(Object::new(id)));
+
+        Ok(())
+    }
+
+    pub fn unlock(&mut self) -> Result<()> {
+        self.send_message(self.session_lock.unwrap().unlock_and_destroy())?;
+        Ok(())
+    }
+
+    pub fn setup(&mut self) -> Result<()> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send_message(self.display.get_registry(id))?;
+        self.registry = Some(WlRegistry::new(Object::new(id)));
+        tracing::trace!("Created: {:?}", self.registry);
+        self.sync()?;
+
+        while self.is_setup == false {
+            self.poll_events()?;
         }
+        Ok(())
     }
 
     pub fn sync(&mut self) -> Result<()> {
         let id = self.next_id;
         self.next_id += 1;
-
-        self.stream
-            .write_all(&self.display.sync(id).to_vec().unwrap())?;
-        self.stream.flush()?;
+        self.send_message(self.display.sync(id))?;
         tracing::trace!("Sent sync request");
-        Ok(())
-    }
-
-    pub fn get_registry(&mut self) -> Result<()> {
-        let id = self.next_id;
-        self.next_id += 1;
-
-        self.stream
-            .write_all(&self.display.get_registry(id).to_vec().unwrap())?;
-        self.stream.flush()?;
-        self.registry = Some(WlRegistry::new(Object::new(id)));
-        tracing::trace!("Created: {:?}", self.registry);
         Ok(())
     }
 }

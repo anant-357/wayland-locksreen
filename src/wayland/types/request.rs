@@ -9,6 +9,8 @@ pub enum Message {
     GetRegistry { registry: Object },
     Sync { callback: u32 },
     Bind { name: Object, id: NewId },
+    Lock { ext_session_lock_v1: Object },
+    Empty,
 }
 
 impl Message {
@@ -20,6 +22,10 @@ impl Message {
                 id.encode_extend(buffer)
             }
             Self::GetRegistry { registry } => registry.encode(),
+            Self::Lock {
+                ext_session_lock_v1,
+            } => ext_session_lock_v1.encode(),
+            Self::Empty => Ok(Vec::new()),
         }
     }
 }
@@ -44,5 +50,4 @@ impl RequestMessage {
         request.extend(self.payload.to_vec()?);
         Ok(request)
     }
-
-   }
+}
